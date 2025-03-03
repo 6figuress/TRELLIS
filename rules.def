@@ -1,0 +1,73 @@
+Bootstrap: docker
+From: nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+
+%files
+    # Copy the entire TRELLIS repository into the container
+    ./ /opt/TRELLIS/
+
+%environment
+    export LC_ALL=C
+    export PATH=/opt/conda/bin:$PATH
+    export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+    export CUDA_HOME=/usr/local/cuda
+    export PYTHONPATH=/opt/TRELLIS:$PYTHONPATH
+    export ATTN_BACKEND=flash_attn  # Can be set to xformers if needed
+
+%post
+    # Set noninteractive installation
+    export DEBIAN_FRONTEND=noninteractive
+
+    # Install system dependencies
+    apt-get update && apt-get install -y --no-install-recommends \
+        git \
+        wget \
+        curl \
+        ca-certificates \
+        build-essential \
+        cmake \
+        ninja-build \
+        gcc \
+        g++ \
+        libgl1-mesa-glx \
+        libglib2.0-0 \
+        libsm6 \
+        libxrender1 \
+        libxext6 \
+        pkg-config \
+        && apt-get clean \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Install Miniconda
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /miniconda.sh
+    bash /miniconda.sh -b -p /opt/conda
+    rm /miniconda.sh
+
+    # Add conda to PATH
+    export PATH=/opt/conda/bin:$PATH
+
+    # Configure conda
+    conda init bash
+
+    # Change to the TRELLIS directory where we copied the files
+    cd /opt/TRELLIS
+
+    # Set up the environment using the project's setup script
+    # This follows exactly what's in the prerequisites
+    . ./setup.sh --new-env --basic --xformers --flash-attn --diffoctreerast --spconv --mipgaussian --kaolin --nvdiffrast
+
+    # Make sure conda environment is activated when using the container
+    echo "source activate trellis" >> ~/.bashrc
+
+    # Clean up to reduce container size
+    conda clean -ya
+
+    # Set permissions for the TRELLIS directory
+    chmod -R 755 /opt/TRELLIS
+
+%runscript
+    # Source conda
+    . /opt/conda/etc/profile.d/conda.sh
+    # Activate the trellis environment
+    conda activate trellis
+    # Execute the command
+    exec "$@"
